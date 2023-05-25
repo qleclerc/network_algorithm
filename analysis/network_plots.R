@@ -5,18 +5,18 @@ library(igraph)
 library(ggnetwork)
 library(ggtext)
 
-adm_data = read.csv(here::here("toy_admission.csv"), sep=";") %>%
+adm_data = read.csv(here::here("data","toy_admission.csv"), sep=";") %>%
   select(id, hospitalization, cat, ward)
 adm_data$cat[adm_data$cat == ""] = adm_data$hospitalization[adm_data$cat == ""]
 adm_data = adm_data[,c(1,3,4)] %>%
   distinct()
-eq_table = openxlsx::read.xlsx(here::here("cat_groupings.xlsx")) %>%
+eq_table = openxlsx::read.xlsx(here::here("data", "cat_groupings.xlsx")) %>%
   select(cat, cat_ag)
 adm_data = adm_data %>%
   left_join(eq_table, by = "cat") %>%
   mutate(staff = grepl("PE-", id))
 
-data = read.csv2(here::here("contact", "toy_mat_ctc.csv"))
+data = read.csv2(here::here("data", "contact", "toy_mat_ctc.csv"))
 
 graph_data = data %>%
   mutate(date_posix = as_date(date_posix)) %>%
@@ -42,7 +42,6 @@ freq_data = rbind(graph_data, graph_data) %>%
   summarise(n = n()) %>%
   rename(id = from)
 
-#https://r.igraph.org/articles/igraph.html 
 graph = graph_from_data_frame(graph_data, directed = F)
 
 vertex_atts = data.frame(id = get.vertex.attribute(graph, "name")) %>%
@@ -73,7 +72,7 @@ ggplot(ggnetwork(graph, layout = igraph::layout.kamada.kawai(graph)),
                      values = c(15,16)) +
   labs(colour = "Ward:", shape = "")
 
-ggsave("network_plot.png")
+ggsave(here::here("figures", "example_network_plot.png"))
 
 ggplot(ggnetwork(graph, layout = igraph::layout.kamada.kawai(graph)),
        aes(x = x, y = y, xend = xend, yend = yend)) +
@@ -85,7 +84,7 @@ ggplot(ggnetwork(graph, layout = igraph::layout.kamada.kawai(graph)),
   labs(colour = "Ward:", size = "Time in\ncontact (mins):") +
   guides(shape = "none")
 
-ggsave("network_plot_dur.png")
+ggsave(here::here("figures", "example_network_plot_dur.png"))
 
 ggplot(ggnetwork(graph, layout = igraph::layout.kamada.kawai(graph)),
        aes(x = x, y = y, xend = xend, yend = yend)) +
@@ -97,4 +96,4 @@ ggplot(ggnetwork(graph, layout = igraph::layout.kamada.kawai(graph)),
   labs(colour = "Ward:", size = "Number of\ncontacts:") +
   guides(shape = "none")
 
-ggsave("network_plot_freq.png")
+ggsave(here::here("figures", "network_plot_freq.png"))
