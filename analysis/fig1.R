@@ -7,6 +7,8 @@ library(ggtext)
 library(cowplot)
 library(RColorBrewer)
 
+source("helper_functions.r")
+
 pal = brewer.pal(6, "Set2")
 
 adm_data = read.csv(here::here("data","toy_admission.csv"), sep=";") %>%
@@ -20,48 +22,15 @@ adm_data = adm_data %>%
   left_join(eq_table, by = "cat") %>%
   mutate(staff = grepl("PE-", id))
 
-data = read.csv2(here::here("data", "contact", "toy_mat_ctc.csv"))
+data = read.csv2(here::here("data", "toy_mat_ctc.csv"))
 
 graph_data = data %>%
   mutate(date_posix = as_datetime(date_posix)) %>%
-  mutate(date_posix = floor_date(date_posix, "hour")) %>%
+  mutate(date_posix = floor_date(date_posix, "day")) %>%
   filter(date_posix >= as_date("2009-07-27") & date_posix < as_date("2009-08-24")) %>%
   group_by(from, to, date_posix) %>%
   summarise(length = sum(length)) %>%
   ungroup
-
-graph_data_sorted = graph_data %>%
-  arrange(date_posix)
-
-probs_PA = c()
-probs_PE = c()
-
-for(pp in unique(adm_data$id)){
-  
-  pp_contacts = graph_data_sorted %>%
-    filter(from == pp | to == pp) %>%
-    mutate(from = replace(from, from == pp, to[from==pp])) %>%
-    pull(from)
-  
-  if(length(pp_contacts) == 0) next
-  
-  unique_cc = c()
-  previous=0
-  for(cc in pp_contacts){
-    if(cc %in% unique_cc) previous = previous+1
-    else{
-      unique_cc = c(unique_cc, cc)
-    }
-  }
-  
-  if(grepl("PA-", pp)) probs_PA = c(probs_PA, previous/length(pp_contacts))
-  else probs_PE = c(probs_PE, previous/length(pp_contacts))
-  
-}
-
-mean(probs_PA)
-mean(probs_PE)
-
 
 graph_data_PA_PA = graph_data %>%
   filter(grepl("PA-", from) & grepl("PA-", to))
@@ -72,193 +41,30 @@ graph_data_PE_PE = graph_data %>%
 graph_data_PA_PE = graph_data %>%
   filter((grepl("PE-", from) & grepl("PA-", to)) | (grepl("PA-", from) & grepl("PE-", to)))
 
+all_metrics = get_net_metrics(graph_data, network = "Full")
+PA_PA_metrics = get_net_metrics(graph_data_PA_PA, network = "PA-PA")
+PE_PE_metrics = get_net_metrics(graph_data_PE_PE, network = "PE-PE")
+PA_PE_metrics = get_net_metrics(graph_data_PA_PE, network = "PA-PE")
+
+cols = colnames(all_metrics)[1:7]
+summary_tab = rbind(all_metrics, PA_PA_metrics, PE_PE_metrics, PA_PE_metrics) %>%
+  mutate(temp_corr = replace(temp_corr, temp_corr==0, NA)) %>%
+  group_by(network) %>%
+  summarise(across(all_of(cols), list(mean=mean, sd=sd), na.rm=T))
+
+summary_tab[,-1] = round(summary_tab[,-1], 2)
+
+View(summary_tab)
 
 all_degrees = c()
-all_densities = c()
-all_transitivities = c()
-all_assortativities = c()
-all_assortativities_ward = c()
-
-all_degrees_PA_PA = c()
-all_densities_PA_PA = c()
-all_transitivities_PA_PA = c()
-all_assortativities_PA_PA = c()
-all_assortativities_PA_PA_ward = c()
-
-all_degrees_PE_PE = c()
-all_densities_PE_PE = c()
-all_transitivities_PE_PE = c()
-all_assortativities_PE_PE = c()
-all_assortativities_PE_PE_ward = c()
-
-all_degrees_PA_PE = c()
-all_densities_PA_PE = c()
-all_transitivities_PA_PE = c()
-all_assortativities_PA_PE = c()
-all_assortativities_PA_PE_ward = c()
-
 for(d in unique(graph_data$date_posix)){
-  
-  # full network
   data_d = graph_data %>%
     filter(date_posix == d)
   
   graph_d = graph_from_data_frame(data_d, directed = F)
   graph_d = simplify(graph_d)
-  vertex_atts = data.frame(id = get.vertex.attribute(graph_d, "name")) %>%
-    left_join(adm_data, "id") %>%
-    mutate(ward = replace(ward, ward == "Menard 1", "Neurologic (1)"),
-           ward = replace(ward, ward == "Menard 2", "Neurologic (2)"),
-           ward = replace(ward, ward == "Sorrel 0", "Nutrition"),
-           ward = replace(ward, ward == "Sorrel 1", "Neurologic (3)"),
-           ward = replace(ward, ward == "Sorrel 2", "Geriatric"),
-           ward = replace(ward, ward == "Other", "Mobile"))
-  graph_d = graph_d %>%
-    set_vertex_attr("cat", value = vertex_atts$cat) %>%
-    set_vertex_attr("cat_ag", value = vertex_atts$cat_ag) %>%
-    set_vertex_attr("staff", value = vertex_atts$staff) %>%
-    set_vertex_attr("ward", value = vertex_atts$ward)
-  
-  
   all_degrees = c(all_degrees, degree(graph_d))
-  all_densities = c(all_densities, edge_density(graph_d))
-  all_transitivities = c(all_transitivities, transitivity(graph_d))
-  all_assortativities = c(all_assortativities,assortativity.degree(graph_d, directed = F))
-  all_assortativities_ward = c(all_assortativities_ward,assortativity.nominal(graph_d, as.factor(V(graph_d)$ward), directed = F))
-  
-  
-  # patient-patient
-  data_d = graph_data_PA_PA %>%
-    filter(date_posix == d)
-  
-  graph_d = graph_from_data_frame(data_d, directed = F)
-  graph_d = simplify(graph_d)
-  vertex_atts = data.frame(id = get.vertex.attribute(graph_d, "name")) %>%
-    left_join(adm_data, "id") %>%
-    mutate(ward = replace(ward, ward == "Menard 1", "Neurologic (1)"),
-           ward = replace(ward, ward == "Menard 2", "Neurologic (2)"),
-           ward = replace(ward, ward == "Sorrel 0", "Nutrition"),
-           ward = replace(ward, ward == "Sorrel 1", "Neurologic (3)"),
-           ward = replace(ward, ward == "Sorrel 2", "Geriatric"),
-           ward = replace(ward, ward == "Other", "Mobile"))
-  graph_d = graph_d %>%
-    set_vertex_attr("cat", value = vertex_atts$cat) %>%
-    set_vertex_attr("cat_ag", value = vertex_atts$cat_ag) %>%
-    set_vertex_attr("staff", value = vertex_atts$staff) %>%
-    set_vertex_attr("ward", value = vertex_atts$ward)
-  
-  
-  all_degrees_PA_PA = c(all_degrees_PA_PA, degree(graph_d))
-  all_densities_PA_PA = c(all_densities_PA_PA, edge_density(graph_d))
-  all_transitivities_PA_PA = c(all_transitivities_PA_PA, transitivity(graph_d))
-  all_assortativities_PA_PA = c(all_assortativities_PA_PA,assortativity.degree(graph_d, directed = F))
-  all_assortativities_PA_PA_ward = c(all_assortativities_PA_PA_ward,assortativity.nominal(graph_d, as.factor(V(graph_d)$ward), directed = F))
-  
-  # staff-staff
-  data_d = graph_data_PE_PE %>%
-    filter(date_posix == d)
-  
-  graph_d = graph_from_data_frame(data_d, directed = F)
-  graph_d = simplify(graph_d)
-  vertex_atts = data.frame(id = get.vertex.attribute(graph_d, "name")) %>%
-    left_join(adm_data, "id") %>%
-    mutate(ward = replace(ward, ward == "Menard 1", "Neurologic (1)"),
-           ward = replace(ward, ward == "Menard 2", "Neurologic (2)"),
-           ward = replace(ward, ward == "Sorrel 0", "Nutrition"),
-           ward = replace(ward, ward == "Sorrel 1", "Neurologic (3)"),
-           ward = replace(ward, ward == "Sorrel 2", "Geriatric"),
-           ward = replace(ward, ward == "Other", "Mobile"))
-  graph_d = graph_d %>%
-    set_vertex_attr("cat", value = vertex_atts$cat) %>%
-    set_vertex_attr("cat_ag", value = vertex_atts$cat_ag) %>%
-    set_vertex_attr("staff", value = vertex_atts$staff) %>%
-    set_vertex_attr("ward", value = vertex_atts$ward)
-  
-  
-  all_degrees_PE_PE = c(all_degrees_PE_PE, degree(graph_d))
-  all_densities_PE_PE = c(all_densities_PE_PE, edge_density(graph_d))
-  all_transitivities_PE_PE = c(all_transitivities_PE_PE, transitivity(graph_d))
-  all_assortativities_PE_PE = c(all_assortativities_PE_PE,assortativity.degree(graph_d, directed = F))
-  all_assortativities_PE_PE_ward = c(all_assortativities_PE_PE_ward,assortativity.nominal(graph_d, as.factor(V(graph_d)$ward), directed = F))
-  
-  # patient-staff
-  data_d = graph_data_PA_PE %>%
-    filter(date_posix == d)
-  
-  graph_d = graph_from_data_frame(data_d, directed = F)
-  graph_d = simplify(graph_d)
-  vertex_atts = data.frame(id = get.vertex.attribute(graph_d, "name")) %>%
-    left_join(adm_data, "id") %>%
-    mutate(ward = replace(ward, ward == "Menard 1", "Neurologic (1)"),
-           ward = replace(ward, ward == "Menard 2", "Neurologic (2)"),
-           ward = replace(ward, ward == "Sorrel 0", "Nutrition"),
-           ward = replace(ward, ward == "Sorrel 1", "Neurologic (3)"),
-           ward = replace(ward, ward == "Sorrel 2", "Geriatric"),
-           ward = replace(ward, ward == "Other", "Mobile"))
-  graph_d = graph_d %>%
-    set_vertex_attr("cat", value = vertex_atts$cat) %>%
-    set_vertex_attr("cat_ag", value = vertex_atts$cat_ag) %>%
-    set_vertex_attr("staff", value = vertex_atts$staff) %>%
-    set_vertex_attr("ward", value = vertex_atts$ward)
-  
-  
-  all_degrees_PA_PE = c(all_degrees_PA_PE, degree(graph_d))
-  all_densities_PA_PE = c(all_densities_PA_PE, edge_density(graph_d))
-  all_transitivities_PA_PE = c(all_transitivities_PA_PE, transitivity(graph_d))
-  all_assortativities_PA_PE = c(all_assortativities_PA_PE,assortativity.degree(graph_d, directed = F))
-  all_assortativities_PA_PE_ward = c(all_assortativities_PA_PE_ward,assortativity.nominal(graph_d, as.factor(V(graph_d)$ward), directed = F))
-  
 }
-
-(sd(all_degrees)/mean(all_degrees))^2
-(sd(all_degrees_PA_PA)/mean(all_degrees_PA_PA))^2
-(sd(all_degrees_PE_PE)/mean(all_degrees_PE_PE))^2
-(sd(all_degrees_PA_PE)/mean(all_degrees_PA_PE))^2
-
-summary_tab = data.frame(full = c(mean(all_degrees),
-                                  mean(all_densities),
-                                  mean(all_transitivities),
-                                  mean(all_assortativities),
-                                  mean(all_assortativities_ward)),
-                         full_sd = c(sd(all_degrees),
-                                     sd(all_densities),
-                                     sd(all_transitivities),
-                                     sd(all_assortativities),
-                                     sd(all_assortativities_ward)),
-                         PA_PA = c(mean(all_degrees_PA_PA),
-                                   mean(all_densities_PA_PA),
-                                   mean(all_transitivities_PA_PA),
-                                   mean(all_assortativities_PA_PA),
-                                   mean(all_assortativities_PA_PA_ward)),
-                         PA_PA_sd = c(sd(all_degrees_PA_PA),
-                                      sd(all_densities_PA_PA),
-                                      sd(all_transitivities_PA_PA),
-                                      sd(all_assortativities_PA_PA),
-                                      sd(all_assortativities_PA_PA_ward)),
-                         PE_PE = c(mean(all_degrees_PE_PE),
-                                   mean(all_densities_PE_PE),
-                                   mean(all_transitivities_PE_PE),
-                                   mean(all_assortativities_PE_PE),
-                                   mean(all_assortativities_PE_PE_ward)),
-                         PE_PE_sd = c(sd(all_degrees_PE_PE),
-                                      sd(all_densities_PE_PE),
-                                      sd(all_transitivities_PE_PE),
-                                      sd(all_assortativities_PE_PE),
-                                      sd(all_assortativities_PE_PE_ward)),
-                         PA_PE = c(mean(all_degrees_PA_PE),
-                                   mean(all_densities_PA_PE),
-                                   mean(all_transitivities_PA_PE),
-                                   mean(all_assortativities_PA_PE),
-                                   mean(all_assortativities_PA_PE_ward)),
-                         PA_PE_sd = c(sd(all_degrees_PA_PE),
-                                      sd(all_densities_PA_PE),
-                                      sd(all_transitivities_PA_PE),
-                                      sd(all_assortativities_PA_PE),
-                                      sd(all_assortativities_PA_PE_ward)))
-
-summary_tab = round(summary_tab, 2)
-
-summary_tab
 
 pe = ggplot() +
   geom_histogram(aes(all_degrees, after_stat(density)), binwidth = 1, colour = "grey") +
@@ -375,7 +181,7 @@ pb = ggplot(ggnetwork(graph_example_PA_PA, layout = igraph::layout_with_kk(graph
   theme_blank() +
   scale_shape_manual(breaks = c("TRUE", "FALSE"), labels = c("Staff", "Patients"),
                      values = c(15,17)) +
-  scale_colour_discrete(type = pal) +
+  scale_colour_discrete(type = pal[-2]) +
   labs(colour = "Ward:", shape = "Category:") +
   theme(legend.text = element_text(size=12)) +
   guides(shape = "none", colour = "none")

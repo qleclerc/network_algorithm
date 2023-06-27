@@ -6,9 +6,10 @@ library(ggnetwork)
 library(ggtext)
 library(cowplot)
 library(RColorBrewer)
+library(ggsankey)
 
-options(dplyr.summarise.inform = FALSE)
-pal = brewer.pal(6, "Set2")
+staff_pal = c(brewer.pal(7, "Dark2"))
+pat_pal = brewer.pal(6, "Set2")
 
 adm_data = read.csv(here::here("data","toy_admission.csv"), sep=";") %>%
   select(id, hospitalization, cat, ward)
@@ -21,7 +22,7 @@ adm_data = adm_data %>%
   left_join(eq_table, by = "cat") %>%
   mutate(staff = grepl("PE-", id))
 
-data = read.csv2(here::here("data", "contact", "toy_mat_ctc.csv"))
+data = read.csv2(here::here("data", "toy_mat_ctc.csv"))
 
 graph_data = data %>%
   mutate(date_posix = as_date(date_posix)) %>%
@@ -31,398 +32,107 @@ graph_data = data %>%
   summarise(length = sum(length)) %>%
   ungroup
 
-all_files = list.files(here::here("data", "contact"))
+pa = graph_data %>%
+  select(from, to) %>%
+  distinct %>%
+  mutate(fromto = paste0(from, to),
+         tofrom = paste0(to, from)) %>%
+  filter(!(fromto %in% tofrom)) %>%
+  select(from, to) %>%
+  left_join(adm_data %>% select(id, cat_ag, staff, ward) %>% rename(from = id)) %>%
+  rename(from_cat = cat_ag, from_staff = staff, from_ward = ward) %>%
+  left_join(adm_data %>% select(id, cat_ag, staff, ward) %>% rename(to = id)) %>%
+  rename(to_cat = cat_ag, to_staff = staff, to_ward = ward) %>%
+  filter(from_staff != to_staff) %>%
+  filter(!is.na(from_cat)) %>%
+  filter(!is.na(to_cat)) %>%
+  mutate(Staff = replace(from_cat, from_staff==F, to_cat[from_staff==F]),
+         Patients = replace(to_ward, from_staff==F, from_ward[from_staff==F])) %>%
+  mutate(Patients = replace(Patients, Patients == "Menard 1", "Neurologic (1)"),
+         Patients = replace(Patients, Patients == "Menard 2", "Neurologic (2)"),
+         Patients = replace(Patients, Patients == "Sorrel 0", "Nutrition"),
+         Patients = replace(Patients, Patients == "Sorrel 1", "Neurologic (3)"),
+         Patients = replace(Patients, Patients == "Sorrel 2", "Geriatric"),
+         Patients = replace(Patients, Patients == "Other", "Mobile")) %>%
+  make_long(Staff, Patients) %>%
+  ggplot(aes(x = x, next_x = next_x, node = node, next_node = next_node,
+             fill = factor(node), label = node)) +
+  geom_sankey(flow.alpha = 0.6, node.colour = "grey30") +
+  geom_sankey_label(hjust = c(1.2,1.4,1.4,1.45,1.4,1.25,
+                              -0.4,-0.3,-0.3,-0.25,-0.5)) +
+  scale_fill_manual(breaks = c("Care assistants", "Reeducation", "Doctors", "Other", "Porters", "Nurses",
+                               "Geriatric", "Mobile", "Neurologic (1)", "Neurologic (2)", "Neurologic (3)",
+                               "Nutrition"),
+                    values = c(staff_pal[-1],pat_pal)) +
+  theme_sankey(base_size = 18) +
+  labs(x = NULL) +
+  theme(legend.position = "none",
+        plot.margin = margin(t = 0, b = 0, r = 10, l = 0))
 
-simu_files = grep("BuiltSimulated", all_files, value = T)
-simu_record_files = grep("Record", all_files, value = T)
-resimu_files = grep("ReSimulated", all_files, value = T)
-random_files = grep("Random", all_files, value = T)
 
+graph_data_sorted = graph_data %>%
+  arrange(date_posix)
 
-## SIMULATED #####
+probs_PA = c()
+probs_PE = c()
 
-all_degrees_simu = rep(0,length(unique(graph_data$date_posix))*length(simu_files))
-all_densities_simu = rep(0,length(unique(graph_data$date_posix))*length(simu_files))
-all_transitivities_simu = rep(0,length(unique(graph_data$date_posix))*length(simu_files))
-all_assortativities_simu = rep(0,length(unique(graph_data$date_posix))*length(simu_files))
-all_assortativities_ward_simu = rep(0,length(unique(graph_data$date_posix))*length(simu_files))
-all_iters_simu = rep(0,length(unique(graph_data$date_posix))*length(simu_files))
+pp="PA-001-LAM"
 
-index=1
-iter=1
-
-for(f in simu_files){
+for(pp in unique(adm_data$id)){
   
-  data = read.csv2(here::here("data", "contact", f))
+  pp_contacts = graph_data_sorted %>%
+    filter(from == pp | to == pp)
   
-  graph_data = data %>%
-    mutate(date_posix = as_date(date_posix)) %>%
-    mutate(date_posix = floor_date(date_posix, "day")) %>%
-    filter(date_posix >= as_date("2009-07-27") & date_posix < as_date("2009-08-24")) %>%
-    select(from, to, date_posix) %>%
-    distinct
+  unique_cc = c()
+  proba=c()
   
-  for(d in unique(graph_data$date_posix)){
-    
-    # full network
-    data_d = graph_data %>%
-      filter(date_posix == d)
-    
-    graph_d = graph_from_data_frame(data_d, directed = F)
-    graph_d = simplify(graph_d)
-    vertex_atts = data.frame(id = get.vertex.attribute(graph_d, "name")) %>%
-      left_join(adm_data, "id") %>%
-      mutate(ward = replace(ward, ward == "Menard 1", "Neurologic (1)"),
-             ward = replace(ward, ward == "Menard 2", "Neurologic (2)"),
-             ward = replace(ward, ward == "Sorrel 0", "Nutrition"),
-             ward = replace(ward, ward == "Sorrel 1", "Neurologic (3)"),
-             ward = replace(ward, ward == "Sorrel 2", "Geriatric"),
-             ward = replace(ward, ward == "Other", "Mobile"))
-    graph_d = graph_d %>%
-      set_vertex_attr("cat", value = vertex_atts$cat) %>%
-      set_vertex_attr("cat_ag", value = vertex_atts$cat_ag) %>%
-      set_vertex_attr("staff", value = vertex_atts$staff) %>%
-      set_vertex_attr("ward", value = vertex_atts$ward)
-    
-    all_degrees_simu[index] = mean(degree(graph_d))
-    all_densities_simu[index] = edge_density(graph_d)
-    all_transitivities_simu[index] = transitivity(graph_d)
-    all_assortativities_simu[index] = assortativity.degree(graph_d, directed = F)
-    all_assortativities_ward_simu[index] = assortativity.nominal(graph_d, as.factor(V(graph_d)$ward), directed = F)
-    all_iters_simu[index] = iter
-    index=index+1
+  tot_cc = c(pp_contacts$from, pp_contacts$to)
+  tot_cc = tot_cc[which(tot_cc != pp)]
+  
+  if(pp == "PA-001-LAM") cat(length(tot_cc), "contacts over",
+                             length(unique(pp_contacts$date_posix)), "days\n")
+  
+  for(dd in unique(pp_contacts$date_posix)){
+    pp_contacts_dd = pp_contacts %>%
+      filter(date_posix == dd)
+    if(is.null(unique_cc)){
+      unique_cc = unique(c(pp_contacts_dd$from, pp_contacts_dd$to))
+      unique_cc = unique_cc[which(unique_cc != pp)]
+    } else {
+      if(pp == "PA-001-LAM") cat("currently on day", dd, "\n")
+      if(pp == "PA-001-LAM") cat("currently", length(unique_cc), "unique contacts\n")
+      pp_contacts_dd = unique(c(pp_contacts_dd$from, pp_contacts_dd$to))
+      pp_contacts_dd = pp_contacts_dd[which(pp_contacts_dd != pp)]
+      if(pp == "PA-001-LAM") cat(length(pp_contacts_dd), "unique contacts on that day\n")
+      prev_cc = intersect(pp_contacts_dd, unique_cc)
+      if(pp == "PA-001-LAM") cat(length(prev_cc),"of those are previous contacts\n")
+      proba = c(proba, length(prev_cc)/length(pp_contacts_dd))
+      unique_cc = c(unique_cc, setdiff(pp_contacts_dd, unique_cc))
+    }
   }
-  iter=iter+1
-}
-
-
-## SIMULATED WITH RECORD #####
-
-all_degrees_simu_record = rep(0,length(unique(graph_data$date_posix))*length(simu_record_files))
-all_densities_simu_record = rep(0,length(unique(graph_data$date_posix))*length(simu_record_files))
-all_transitivities_simu_record = rep(0,length(unique(graph_data$date_posix))*length(simu_record_files))
-all_assortativities_simu_record = rep(0,length(unique(graph_data$date_posix))*length(simu_record_files))
-all_assortativities_ward_simu_record = rep(0,length(unique(graph_data$date_posix))*length(simu_record_files))
-all_iters_simu_record = rep(0,length(unique(graph_data$date_posix))*length(simu_record_files))
-
-index=1
-iter=1
-
-for(f in simu_record_files){
   
-  data = read.csv2(here::here("data", "contact", f))
-  
-  graph_data = data %>%
-    mutate(date_posix = as_date(date_posix)) %>%
-    mutate(date_posix = floor_date(date_posix, "day")) %>%
-    filter(date_posix >= as_date("2009-07-27") & date_posix < as_date("2009-08-24")) %>%
-    select(from, to, date_posix) %>%
-    distinct
-  
-  for(d in unique(graph_data$date_posix)){
-    
-    # full network
-    data_d = graph_data %>%
-      filter(date_posix == d)
-    
-    graph_d = graph_from_data_frame(data_d, directed = F)
-    graph_d = simplify(graph_d)
-    vertex_atts = data.frame(id = get.vertex.attribute(graph_d, "name")) %>%
-      left_join(adm_data, "id") %>%
-      mutate(ward = replace(ward, ward == "Menard 1", "Neurologic (1)"),
-             ward = replace(ward, ward == "Menard 2", "Neurologic (2)"),
-             ward = replace(ward, ward == "Sorrel 0", "Nutrition"),
-             ward = replace(ward, ward == "Sorrel 1", "Neurologic (3)"),
-             ward = replace(ward, ward == "Sorrel 2", "Geriatric"),
-             ward = replace(ward, ward == "Other", "Mobile"))
-    graph_d = graph_d %>%
-      set_vertex_attr("cat", value = vertex_atts$cat) %>%
-      set_vertex_attr("cat_ag", value = vertex_atts$cat_ag) %>%
-      set_vertex_attr("staff", value = vertex_atts$staff) %>%
-      set_vertex_attr("ward", value = vertex_atts$ward)
-    
-    all_degrees_simu_record[index] = mean(degree(graph_d))
-    all_densities_simu_record[index] = edge_density(graph_d)
-    all_transitivities_simu_record[index] = transitivity(graph_d)
-    all_assortativities_simu_record[index] = assortativity.degree(graph_d, directed = F)
-    all_assortativities_ward_simu_record[index] = assortativity.nominal(graph_d, as.factor(V(graph_d)$ward), directed = F)
-    all_iters_simu_record[index] = iter
-    index=index+1
-  }
-  iter=iter+1
-}
-
-
-## RESIMULATED #####
-
-all_degrees_resimu = rep(0,length(unique(graph_data$date_posix))*length(resimu_files))
-all_densities_resimu = rep(0,length(unique(graph_data$date_posix))*length(resimu_files))
-all_transitivities_resimu = rep(0,length(unique(graph_data$date_posix))*length(resimu_files))
-all_assortativities_resimu = rep(0,length(unique(graph_data$date_posix))*length(resimu_files))
-all_assortativities_ward_resimu = rep(0,length(unique(graph_data$date_posix))*length(resimu_files))
-all_iters_simu = rep(0,length(unique(graph_data$date_posix))*length(resimu_files))
-
-index=1
-iter=1
-
-for(f in resimu_files){
-  
-  data = read.csv2(here::here("data", "contact", f))
-  
-  graph_data = data %>%
-    mutate(date_posix = as_date(date_posix)) %>%
-    mutate(date_posix = floor_date(date_posix, "day")) %>%
-    filter(date_posix >= as_date("2009-07-27") & date_posix < as_date("2009-08-24")) %>%
-    select(from, to, date_posix) %>%
-    distinct
-  
-  for(d in unique(graph_data$date_posix)){
-    
-    # full network
-    data_d = graph_data %>%
-      filter(date_posix == d)
-    
-    graph_d = graph_from_data_frame(data_d, directed = F)
-    graph_d = simplify(graph_d)
-    vertex_atts = data.frame(id = get.vertex.attribute(graph_d, "name")) %>%
-      left_join(adm_data, "id") %>%
-      mutate(ward = replace(ward, ward == "Menard 1", "Neurologic (1)"),
-             ward = replace(ward, ward == "Menard 2", "Neurologic (2)"),
-             ward = replace(ward, ward == "Sorrel 0", "Nutrition"),
-             ward = replace(ward, ward == "Sorrel 1", "Neurologic (3)"),
-             ward = replace(ward, ward == "Sorrel 2", "Geriatric"),
-             ward = replace(ward, ward == "Other", "Mobile"))
-    graph_d = graph_d %>%
-      set_vertex_attr("cat", value = vertex_atts$cat) %>%
-      set_vertex_attr("cat_ag", value = vertex_atts$cat_ag) %>%
-      set_vertex_attr("staff", value = vertex_atts$staff) %>%
-      set_vertex_attr("ward", value = vertex_atts$ward)
-    
-    all_degrees_resimu[index] = mean(degree(graph_d))
-    all_densities_resimu[index] = edge_density(graph_d)
-    all_transitivities_resimu[index] = transitivity(graph_d)
-    all_assortativities_resimu[index] = assortativity.degree(graph_d, directed = F)
-    all_assortativities_ward_resimu[index] = assortativity.nominal(graph_d, as.factor(V(graph_d)$ward), directed = F)
-    all_iters_simu[index] = iter
-    index=index+1
-  }
-  iter=iter+1
-}
-
-
-
-
-## RANDOM #####
-
-all_degrees_random = rep(0,length(unique(graph_data$date_posix))*length(random_files))
-all_densities_random = rep(0,length(unique(graph_data$date_posix))*length(random_files))
-all_transitivities_random = rep(0,length(unique(graph_data$date_posix))*length(random_files))
-all_assortativities_random = rep(0,length(unique(graph_data$date_posix))*length(random_files))
-all_assortativities_ward_random = rep(0,length(unique(graph_data$date_posix))*length(random_files))
-all_iters_random = rep(0,length(unique(graph_data$date_posix))*length(random_files))
-
-index=1
-iter=1
-
-for(f in random_files){
-  
-  data = read.csv2(here::here("data", "contact", f))
-  
-  graph_data = data %>%
-    mutate(date_posix = as_date(date_posix)) %>%
-    mutate(date_posix = floor_date(date_posix, "day")) %>%
-    filter(date_posix >= as_date("2009-07-27") & date_posix < as_date("2009-08-24")) %>%
-    select(from, to, date_posix) %>%
-    distinct
-  
-  for(d in unique(graph_data$date_posix)){
-    
-    # full network
-    data_d = graph_data %>%
-      filter(date_posix == d)
-    
-    graph_d = graph_from_data_frame(data_d, directed = F)
-    graph_d = simplify(graph_d)
-    vertex_atts = data.frame(id = get.vertex.attribute(graph_d, "name")) %>%
-      left_join(adm_data, "id") %>%
-      mutate(ward = replace(ward, ward == "Menard 1", "Neurologic (1)"),
-             ward = replace(ward, ward == "Menard 2", "Neurologic (2)"),
-             ward = replace(ward, ward == "Sorrel 0", "Nutrition"),
-             ward = replace(ward, ward == "Sorrel 1", "Neurologic (3)"),
-             ward = replace(ward, ward == "Sorrel 2", "Geriatric"),
-             ward = replace(ward, ward == "Other", "Mobile"))
-    graph_d = graph_d %>%
-      set_vertex_attr("cat", value = vertex_atts$cat) %>%
-      set_vertex_attr("cat_ag", value = vertex_atts$cat_ag) %>%
-      set_vertex_attr("staff", value = vertex_atts$staff) %>%
-      set_vertex_attr("ward", value = vertex_atts$ward)
-    
-    all_degrees_random[index] = mean(degree(graph_d))
-    all_densities_random[index] = edge_density(graph_d)
-    all_transitivities_random[index] = transitivity(graph_d)
-    all_assortativities_random[index] = assortativity.degree(graph_d, directed = F)
-    all_assortativities_ward_random[index] = assortativity.nominal(graph_d, as.factor(V(graph_d)$ward), directed = F)
-    all_iters_random[index] = iter
-    index=index+1
-  }
-  iter=iter+1
-}
-
-simu_data = data.frame(degrees = all_degrees_simu,
-                       densities = all_densities_simu,
-                       transitivities = all_transitivities_simu,
-                       assortativities = all_assortativities_simu,
-                       assortativities_ward = all_assortativities_ward_simu,
-                       iter = all_iters_simu,
-                       network = "Simulated")
-simu_record_data = data.frame(degrees = all_degrees_simu_record,
-                              densities = all_densities_simu_record,
-                              transitivities = all_transitivities_simu_record,
-                              assortativities = all_assortativities_simu_record,
-                              assortativities_ward = all_assortativities_ward_simu_record,
-                              iter = all_iters_simu_record,
-                              network = "Simulated (bias)")
-resimu_data = data.frame(degrees = all_degrees_resimu,
-                       densities = all_densities_resimu,
-                       transitivities = all_transitivities_resimu,
-                       assortativities = all_assortativities_resimu,
-                       assortativities_ward = all_assortativities_ward_resimu,
-                       iter = all_iters_resimu,
-                       network = "Re-simulated")
-random_data = data.frame(degrees = all_degrees_random,
-                         densities = all_densities_random,
-                         transitivities = all_transitivities_random,
-                         assortativities = all_assortativities_random,
-                         assortativities_ward = all_assortativities_ward_random,
-                         iter = all_iters_random,
-                         network = "Random")
-
-summary_data = rbind(simu_data, simu_record_data, resimu_data, random_data)
-
-write.csv(summary_data, "summary_data.csv", row.names = F)
-
-
-summary_data = read.csv("summary_data.csv")
-
-## REAL #####
-
-data = read.csv2(here::here("data", "contact", "toy_mat_ctc.csv"))
-
-graph_data = data %>%
-  mutate(date_posix = as_date(date_posix)) %>%
-  mutate(date_posix = floor_date(date_posix, "day")) %>%
-  filter(date_posix >= as_date("2009-07-27") & date_posix < as_date("2009-08-24")) %>%
-  group_by(from, to, date_posix) %>%
-  summarise(length = sum(length)) %>%
-  ungroup
-
-all_degrees = c()
-all_densities = c()
-all_transitivities = c()
-all_assortativities = c()
-all_assortativities_ward = c()
-
-for(d in unique(graph_data$date_posix)){
-  
-  # full network
-  data_d = graph_data %>%
-    filter(date_posix == d)
-  
-  graph_d = graph_from_data_frame(data_d, directed = F)
-  graph_d = simplify(graph_d)
-  vertex_atts = data.frame(id = get.vertex.attribute(graph_d, "name")) %>%
-    left_join(adm_data, "id") %>%
-    mutate(ward = replace(ward, ward == "Menard 1", "Neurologic (1)"),
-           ward = replace(ward, ward == "Menard 2", "Neurologic (2)"),
-           ward = replace(ward, ward == "Sorrel 0", "Nutrition"),
-           ward = replace(ward, ward == "Sorrel 1", "Neurologic (3)"),
-           ward = replace(ward, ward == "Sorrel 2", "Geriatric"),
-           ward = replace(ward, ward == "Other", "Mobile"))
-  graph_d = graph_d %>%
-    set_vertex_attr("cat", value = vertex_atts$cat) %>%
-    set_vertex_attr("cat_ag", value = vertex_atts$cat_ag) %>%
-    set_vertex_attr("staff", value = vertex_atts$staff) %>%
-    set_vertex_attr("ward", value = vertex_atts$ward)
-  
-  all_degrees = c(all_degrees, degree(graph_d))
-  all_densities = c(all_densities, edge_density(graph_d))
-  all_transitivities = c(all_transitivities, transitivity(graph_d))
-  all_assortativities = c(all_assortativities,assortativity.degree(graph_d, directed = F))
-  all_assortativities_ward = c(all_assortativities_ward,assortativity.nominal(graph_d, as.factor(V(graph_d)$ward), directed = F))
+  if(grepl("PA-", pp)) probs_PA = c(probs_PA, mean(proba, na.rm = T))
+  else probs_PE = c(probs_PE, mean(proba, na.rm = T))
   
 }
 
-
-pa = ggplot() +
-  geom_boxplot(data=summary_data%>%filter(iter==1), aes(x = network, y = degrees, colour = network)) +
-  geom_boxplot(aes(x = "Real", y = all_degrees, colour = "Real")) +
-  theme_bw() +
-  guides(colour = "none") +
-  labs(x = "Network", y = "Degree (daily)")
+#note some values are NA because these are people with no contacts recorded over the period
+mean(probs_PA, na.rm = T)
+mean(probs_PE, na.rm = T)
 
 pb = ggplot() +
-  geom_boxplot(data=summary_data%>%filter(iter==1), aes(x = network, y = densities, colour = network)) +
-  geom_boxplot(aes(x = "Real", y = all_densities, colour = "Real")) +
+  geom_boxplot(aes(x = "Staff", probs_PE, group = "Staff", colour = "Staff")) +
+  geom_boxplot(aes(x = "Patients", probs_PA, group = "Patients", colour = "Patients")) +
   theme_bw() +
+  scale_y_continuous(breaks = seq(0,1,0.1)) +
+  scale_x_discrete(limits = c("Staff", "Patients")) +
+  labs(x = "", y = "Probability of contact recurrence") +
   guides(colour = "none") +
-  labs(x = "Network", y = "Density")
+  theme(axis.title.x = element_blank(),
+        axis.text = element_text(size=12),
+        axis.title.y = element_text(size = 12))
 
-pc = ggplot() +
-  geom_boxplot(data=summary_data%>%filter(iter==1), aes(x = network, y = transitivities, colour = network)) +
-  geom_boxplot(aes(x = "Real", y = all_transitivities, colour = "Real")) +
-  theme_bw() +
-  guides(colour = "none") +
-  labs(x = "Network", y = "Transitivity")
+plot_grid(pa, pb, nrow = 1, rel_widths = c(1,0.5), labels = c("a)", "b)"), hjust = 0)
 
-pd = ggplot() +
-  geom_boxplot(data=summary_data%>%filter(iter==1), aes(x = network, y = assortativities, colour = network)) +
-  geom_boxplot(aes(x = "Real", y = all_assortativities, colour = "Real")) +
-  theme_bw() +
-  guides(colour = "none") +
-  labs(x = "Network", y = "Assortativity (degree)")
+ggsave(here::here("figures", "fig2.png"))
 
-pe = ggplot() +
-  geom_boxplot(data=summary_data%>%filter(iter==1), aes(x = network, y = assortativities_ward, colour = network)) +
-  geom_boxplot(aes(x = "Real", y = all_assortativities_ward, colour = "Real")) +
-  theme_bw() +
-  guides(colour = "none") +
-  labs(x = "Network", y = "Assortativity (ward)")
-
-plot_grid(pa,pb,pc,pd,pe, ncol=2, labels=c("a)", "b)", "c)", "d)", "e)"), hjust = 0)
-
-ggsave(here::here("figures", "fig2.png"), width = 8, height = 7.1)
-
-wilcox.test(summary_data %>% filter(network == "Random" & iter == 1) %>% pull(degrees), all_degrees,
-            conf.int = T)
-wilcox.test(summary_data %>% filter(network == "Simulated" & iter == 1) %>% pull(degrees), all_degrees,
-            conf.int = T)
-wilcox.test(summary_data %>% filter(network == "Simulated (record)" & iter == 1) %>% pull(degrees), all_degrees,
-            conf.int = T)
-
-wilcox.test(summary_data %>% filter(network == "Random" & iter == 1) %>% pull(densities), all_densities,
-            conf.int = T)
-wilcox.test(summary_data %>% filter(network == "Simulated" & iter == 1) %>% pull(densities), all_densities,
-            conf.int = T)
-wilcox.test(summary_data %>% filter(network == "Simulated (record)" & iter == 1) %>% pull(densities), all_densities,
-            conf.int = T)
-
-wilcox.test(summary_data %>% filter(network == "Random" & iter == 1) %>% pull(transitivities), all_transitivities,
-            conf.int = T)
-wilcox.test(summary_data %>% filter(network == "Simulated" & iter == 1) %>% pull(transitivities), all_transitivities,
-            conf.int = T)
-wilcox.test(summary_data %>% filter(network == "Simulated (record)" & iter == 1) %>% pull(transitivities), all_transitivities,
-            conf.int = T)
-
-wilcox.test(summary_data %>% filter(network == "Random" & iter == 1) %>% pull(assortativities), all_assortativities,
-            conf.int = T)
-wilcox.test(summary_data %>% filter(network == "Simulated" & iter == 1) %>% pull(assortativities), all_assortativities,
-            conf.int = T)
-wilcox.test(summary_data %>% filter(network == "Simulated (record)" & iter == 1) %>% pull(assortativities), all_assortativities,
-            conf.int = T)
-
-wilcox.test(summary_data %>% filter(network == "Random" & iter == 1) %>% pull(assortativities_ward), all_assortativities_ward,
-            conf.int = T)
-wilcox.test(summary_data %>% filter(network == "Simulated" & iter == 1) %>% pull(assortativities_ward), all_assortativities_ward,
-            conf.int = T)
-wilcox.test(summary_data %>% filter(network == "Simulated (record)" & iter == 1) %>% pull(assortativities_ward), all_assortativities_ward,
-            conf.int = T)
