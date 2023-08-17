@@ -10,7 +10,7 @@ library(RColorBrewer)
 source("helper_functions.R")
 
 options(dplyr.summarise.inform = FALSE)
-pal = c(brewer.pal(5, "Set1")[1], "darkred", brewer.pal(5, "Set1")[-1])
+pal = c(brewer.pal(5, "Set1")[1], "darkred", brewer.pal(5, "Set1")[-c(1,5)])
 
 adm_data = read.csv(here::here("data","toy_admission.csv"), sep=";") %>%
   select(id, hospitalization, cat, ward)
@@ -61,7 +61,7 @@ for(f in simu_files){
     arrange(date_posix)
   
   simu_data = rbind(simu_data,
-                    get_net_metrics(graph_data, iter, "Simulated"))
+                    get_net_metrics(graph_data, iter, "Reconstructed"))
   
   iter=iter+1
 }
@@ -86,7 +86,7 @@ for(f in simu_record_files){
     arrange(date_posix)
   
   simu_record_data = rbind(simu_record_data,
-                           get_net_metrics(graph_data, iter, "Simulated (bias)"))
+                           get_net_metrics(graph_data, iter, "Reconstructed (bias)"))
   
   iter=iter+1
 }
@@ -94,27 +94,27 @@ for(f in simu_record_files){
 
 ## RESIMULATED #####
 
-iter=1
-
-resimu_data = data.frame()
-
-for(f in resimu_files){
-  
-  data = read.csv2(here::here("data", "contact", f))
-  
-  graph_data = data %>%
-    mutate(date_posix = as_date(date_posix)) %>%
-    mutate(date_posix = floor_date(date_posix, "day")) %>%
-    filter(date_posix >= as_date("2009-07-27") & date_posix < as_date("2009-08-24")) %>%
-    select(from, to, date_posix) %>%
-    distinct %>%
-    arrange(date_posix)
-  
-  resimu_data = rbind(resimu_data,
-                      get_net_metrics(graph_data, iter, "Re-simulated"))
-  
-  iter=iter+1
-}
+# iter=1
+# 
+# resimu_data = data.frame()
+# 
+# for(f in resimu_files){
+#   
+#   data = read.csv2(here::here("data", "contact", f))
+#   
+#   graph_data = data %>%
+#     mutate(date_posix = as_date(date_posix)) %>%
+#     mutate(date_posix = floor_date(date_posix, "day")) %>%
+#     filter(date_posix >= as_date("2009-07-27") & date_posix < as_date("2009-08-24")) %>%
+#     select(from, to, date_posix) %>%
+#     distinct %>%
+#     arrange(date_posix)
+#   
+#   resimu_data = rbind(resimu_data,
+#                       get_net_metrics(graph_data, iter, "Re-simulated"))
+#   
+#   iter=iter+1
+# }
 
 
 ## RANDOM #####
@@ -183,7 +183,7 @@ observed_data = get_net_metrics(graph_data, 1, "Observed")
 
 # GROUPED #####
 
-summary_data = rbind(simu_data, simu_record_data, resimu_data, random_data,
+summary_data = rbind(simu_data, simu_record_data, random_data,
                      random_record_data, observed_data)
 
 write.csv(summary_data, "summary_data.csv", row.names = F)
@@ -193,12 +193,18 @@ summary_data = read.csv("summary_data.csv")
 summary_data = summary_data %>%
   mutate(network = factor(network,
                           levels = c("Random", "Random (bias)", "Observed",
-                                     "Simulated (bias)", "Simulated", "Re-simulated")))
+                                     "Reconstructed (bias)", "Reconstructed")))
 
 summary_data = summary_data %>%
   group_by(day, network) %>%
   summarise(across(everything(), median)) %>%
-  select(-iter)
+  select(-iter) %>%
+  ungroup
+
+summary_data %>%
+  select(-day) %>%
+  group_by(network) %>%
+  summarise(across(everything(), \(x) quantile(x, probs=0.75)))
 
 pa = ggplot() +
   geom_boxplot(data=summary_data,
@@ -262,13 +268,10 @@ pg = ggplot() +
   guides(colour = "none") +
   labs(x = "Network", y = "Temporal correlation")
 
-plot_grid(pa,pb,pc,pd,pe,pf,pg, ncol=2, labels=c("a)", "b)", "c)", "d)", "e)","f)","g)"), hjust = 0,
-          align = "v", rel_heights = c(1,1,1,1,1,1.2,2))
-
 plot_grid(plot_grid(pa,pc,pe,pg, ncol=1, rel_heights = c(1,1,1,1.2),
                     labels = c("a)", "c)", "e)", "g)"), hjust = 0, vjust=1, align = "v"),
          plot_grid(pb,pd,pf,NULL, ncol=1, rel_heights = c(1,1,1.2,1), 
                    labels = c("b)", "d)", "f)", ""), hjust = 0, vjust=1, align = "v"))
 
-ggsave(here::here("figures", "fig3.png"), width = 11, height = 8)
+ggsave(here::here("figures", "fig3.png"), width = 12, height = 8)
 

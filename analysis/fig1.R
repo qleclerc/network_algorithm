@@ -30,7 +30,8 @@ graph_data = data %>%
   filter(date_posix >= as_date("2009-07-27") & date_posix < as_date("2009-08-24")) %>%
   group_by(from, to, date_posix) %>%
   summarise(length = sum(length)) %>%
-  ungroup
+  ungroup %>%
+  arrange(date_posix)
 
 graph_data_PA_PA = graph_data %>%
   filter(grepl("PA-", from) & grepl("PA-", to))
@@ -80,7 +81,7 @@ pe = ggplot() +
   scale_x_continuous(breaks = seq(0,70,10))
 
 
-example_date = as_date("2009-08-11")
+example_date = as_date("2009-07-28")
 example_data = data %>% filter(date_posix == example_date)
 
 # full

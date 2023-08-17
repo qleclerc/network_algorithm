@@ -7,6 +7,8 @@ library(ggtext)
 library(cowplot)
 library(RColorBrewer)
 
+source("helper_functions.r")
+
 options(dplyr.summarise.inform = FALSE)
 pal = c(brewer.pal(5, "Set1")[1], brewer.pal(3, "Blues")[-1], brewer.pal(5, "Greens")[-1])
 
@@ -63,7 +65,7 @@ for(f in simu_files){
     arrange(date_posix)
   
   simu_data = rbind(simu_data,
-                    get_net_metrics(graph_data, iter, "Full"))
+                    get_net_metrics(graph_data, iter, "Complete"))
   
   iter=iter+1
 }
@@ -77,7 +79,7 @@ first_half_data = data.frame()
 
 for(f in first_half_files){
   
-  data = read.csv2(here::here("data", "contact", f))
+  data = read.csv2(here::here("data", "truncated", f))
   
   graph_data = data %>%
     mutate(date_posix = as_date(date_posix)) %>%
@@ -88,7 +90,7 @@ for(f in first_half_files){
     arrange(date_posix)
   
   first_half_data = rbind(first_half_data,
-                    get_net_metrics(graph_data, iter, "First half"))
+                    get_net_metrics(graph_data, iter, "1st half"))
   
   iter=iter+1
 }
@@ -102,7 +104,7 @@ second_half_data = data.frame()
 
 for(f in second_half_files){
   
-  data = read.csv2(here::here("data", "contact", f))
+  data = read.csv2(here::here("data", "truncated", f))
   
   graph_data = data %>%
     mutate(date_posix = as_date(date_posix)) %>%
@@ -113,7 +115,7 @@ for(f in second_half_files){
     arrange(date_posix)
   
   second_half_data = rbind(second_half_data,
-                          get_net_metrics(graph_data, iter, "Second half"))
+                          get_net_metrics(graph_data, iter, "2nd half"))
   
   iter=iter+1
 }
@@ -127,7 +129,7 @@ first_quarter_data = data.frame()
 
 for(f in first_quarter_files){
   
-  data = read.csv2(here::here("data", "contact", f))
+  data = read.csv2(here::here("data", "truncated", f))
   
   graph_data = data %>%
     mutate(date_posix = as_date(date_posix)) %>%
@@ -138,7 +140,7 @@ for(f in first_quarter_files){
     arrange(date_posix)
   
   first_quarter_data = rbind(first_quarter_data,
-                           get_net_metrics(graph_data, iter, "First quarter"))
+                           get_net_metrics(graph_data, iter, "1st quarter"))
   
   iter=iter+1
 }
@@ -154,7 +156,7 @@ second_quarter_data = data.frame()
 
 for(f in second_quarter_files){
   
-  data = read.csv2(here::here("data", "contact", f))
+  data = read.csv2(here::here("data", "truncated", f))
   
   graph_data = data %>%
     mutate(date_posix = as_date(date_posix)) %>%
@@ -165,7 +167,7 @@ for(f in second_quarter_files){
     arrange(date_posix)
   
   second_quarter_data = rbind(second_quarter_data,
-                             get_net_metrics(graph_data, iter, "Second quarter"))
+                             get_net_metrics(graph_data, iter, "2nd quarter"))
   
   iter=iter+1
 }
@@ -182,7 +184,7 @@ third_quarter_data = data.frame()
 
 for(f in third_quarter_files){
   
-  data = read.csv2(here::here("data", "contact", f))
+  data = read.csv2(here::here("data", "truncated", f))
   
   graph_data = data %>%
     mutate(date_posix = as_date(date_posix)) %>%
@@ -193,7 +195,7 @@ for(f in third_quarter_files){
     arrange(date_posix)
   
   third_quarter_data = rbind(third_quarter_data,
-                              get_net_metrics(graph_data, iter, "Third quarter"))
+                              get_net_metrics(graph_data, iter, "3rd quarter"))
   
   iter=iter+1
 }
@@ -208,7 +210,7 @@ fourth_quarter_data = data.frame()
 
 for(f in fourth_quarter_files){
   
-  data = read.csv2(here::here("data", "contact", f))
+  data = read.csv2(here::here("data", "truncated", f))
   
   graph_data = data %>%
     mutate(date_posix = as_date(date_posix)) %>%
@@ -219,7 +221,7 @@ for(f in fourth_quarter_files){
     arrange(date_posix)
   
   fourth_quarter_data = rbind(fourth_quarter_data,
-                             get_net_metrics(graph_data, iter, "Fourth quarter"))
+                             get_net_metrics(graph_data, iter, "4th quarter"))
   
   iter=iter+1
 }
@@ -238,13 +240,13 @@ summary_data = read.csv("truncated_data.csv")
 
 summary_data = summary_data %>%
   mutate(network = factor(network,
-                          levels = c("Full",
-                                     "First half",
-                                     "Second half",
-                                     "First quarter",
-                                     "Second quarter",
-                                     "Third quarter",
-                                     "Fourth quarter")))
+                          levels = c("Complete",
+                                     "1st half",
+                                     "2nd half",
+                                     "1st quarter",
+                                     "2nd quarter",
+                                     "3rd quarter",
+                                     "4th quarter")))
 
 summary_data = summary_data %>%
   group_by(day, network) %>%
@@ -256,35 +258,45 @@ pa = ggplot(summary_data) +
   scale_colour_discrete(type = pal) +
   theme_bw() +
   guides(colour = "none") +
-  labs(x = "Period used", y = "Degree (daily)")
+  labs(x = "Period used", y = "Degree (daily)") +
+  theme(axis.title.x = element_blank(),
+        axis.text.x = element_blank())
 
 pb = ggplot(summary_data) +
   geom_boxplot(aes(x = network, y = efficiencies, colour = network)) +
   scale_colour_discrete(type = pal) +
   theme_bw() +
   guides(colour = "none") +
-  labs(x = "Period used", y = "Global efficiency")
+  labs(x = "Period used", y = "Global efficiency") +
+  theme(axis.title.x = element_blank(),
+        axis.text.x = element_blank())
 
 pc = ggplot(summary_data) +
   geom_boxplot(aes(x = network, y = densities, colour = network)) +
   scale_colour_discrete(type = pal) +
   theme_bw() +
   guides(colour = "none") +
-  labs(x = "Period used", y = "Density")
+  labs(x = "Period used", y = "Density") +
+  theme(axis.title.x = element_blank(),
+        axis.text.x = element_blank())
 
 pd = ggplot(summary_data) +
   geom_boxplot(aes(x = network, y = transitivities, colour = network)) +
   scale_colour_discrete(type = pal) +
   theme_bw() +
   guides(colour = "none") +
-  labs(x = "Period used", y = "Transitivity")
+  labs(x = "Period used", y = "Transitivity") +
+  theme(axis.title.x = element_blank(),
+        axis.text.x = element_blank())
 
 pe = ggplot(summary_data) +
   geom_boxplot(aes(x = network, y = assortativities, colour = network)) +
   scale_colour_discrete(type = pal) +
   theme_bw() +
   guides(colour = "none") +
-  labs(x = "Period used", y = "Assortativity (degree)")
+  labs(x = "Period used", y = "Assortativity (degree)") +
+  theme(axis.title.x = element_blank(),
+        axis.text.x = element_blank())
 
 pf = ggplot(summary_data) +
   geom_boxplot(aes(x = network, y = assortativities_ward, colour = network)) +
@@ -293,14 +305,17 @@ pf = ggplot(summary_data) +
   guides(colour = "none") +
   labs(x = "Period used", y = "Assortativity (ward)")
 
-pg = ggplot(summary_data) +
+pg = ggplot(summary_data%>%filter(temp_corr>0)) +
   geom_boxplot(aes(x = network, y = temp_corr, colour = network)) +
   scale_colour_discrete(type = pal) +
   theme_bw() +
   guides(colour = "none") +
   labs(x = "Period used", y = "Temporal correlation")
 
-plot_grid(pa,pb,pc,pd,pe,pf,pg, ncol=2, labels=c("a)", "b)", "c)", "d)", "e)","f)", "g)"), hjust = 0)
+plot_grid(plot_grid(pa,pc,pe,pg, ncol=1, rel_heights = c(1,1,1,1.2),
+                    labels = c("a)", "c)", "e)", "g)"), hjust = 0, vjust=1, align = "v"),
+          plot_grid(pb,pd,pf,NULL, ncol=1, rel_heights = c(1,1,1.2,1), 
+                    labels = c("b)", "d)", "f)", ""), hjust = 0, vjust=1, align = "v"))
 
-ggsave(here::here("figures", "suppfig4.png"), width = 10, height = 7.1)
+ggsave(here::here("figures", "suppfig4.png"), width = 11, height = 8)
 

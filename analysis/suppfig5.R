@@ -7,8 +7,10 @@ library(ggtext)
 library(cowplot)
 library(RColorBrewer)
 
+source("helper_functions.r")
+
 options(dplyr.summarise.inform = FALSE)
-pal = c(brewer.pal(5, "Set1")[1], brewer.pal(3, "Blues")[-1], brewer.pal(5, "Greens")[-1])
+pal = c(brewer.pal(5, "Set1")[1], brewer.pal(9, "Blues")[c(4,6,8)])
 
 adm_data = read.csv(here::here("data","toy_admission.csv"), sep=";") %>%
   select(id, hospitalization, cat, ward)
@@ -60,7 +62,7 @@ for(f in simu_files){
     arrange(date_posix)
   
   simu_data = rbind(simu_data,
-                             get_net_metrics(graph_data, iter, "Full"))
+                             get_net_metrics(graph_data, iter, "Calculated"))
   
   iter=iter+1
 }
@@ -150,7 +152,7 @@ summary_data = read.csv("meetprob_data.csv")
 
 summary_data = summary_data %>%
   mutate(network = factor(network,
-                          levels = c("Full","0.1","0.5","0.9")))
+                          levels = c("Calculated","0.1","0.5","0.9")))
 
 summary_data = summary_data %>%
   group_by(day, network) %>%
@@ -162,35 +164,45 @@ pa = ggplot(summary_data) +
   scale_colour_discrete(type = pal) +
   theme_bw() +
   guides(colour = "none") +
-  labs(x = "Recurring contact probability", y = "Degree (daily)")
+  labs(x = "Recurring contact probability", y = "Degree (daily)") +
+  theme(axis.title.x = element_blank(),
+        axis.text.x = element_blank())
 
 pb = ggplot(summary_data) +
   geom_boxplot(aes(x = network, y = efficiencies, colour = network)) +
   scale_colour_discrete(type = pal) +
   theme_bw() +
   guides(colour = "none") +
-  labs(x = "Recurring contact probability", y = "Global efficiency")
+  labs(x = "Recurring contact probability", y = "Global efficiency") +
+  theme(axis.title.x = element_blank(),
+        axis.text.x = element_blank())
 
 pc = ggplot(summary_data) +
   geom_boxplot(aes(x = network, y = densities, colour = network)) +
   scale_colour_discrete(type = pal) +
   theme_bw() +
   guides(colour = "none") +
-  labs(x = "Recurring contact probability", y = "Density")
+  labs(x = "Recurring contact probability", y = "Density") +
+  theme(axis.title.x = element_blank(),
+        axis.text.x = element_blank())
 
 pd = ggplot(summary_data) +
   geom_boxplot(aes(x = network, y = transitivities, colour = network)) +
   scale_colour_discrete(type = pal) +
   theme_bw() +
   guides(colour = "none") +
-  labs(x = "Recurring contact probability", y = "Transitivity")
+  labs(x = "Recurring contact probability", y = "Transitivity") +
+  theme(axis.title.x = element_blank(),
+        axis.text.x = element_blank())
 
 pe = ggplot(summary_data) +
   geom_boxplot(aes(x = network, y = assortativities, colour = network)) +
   scale_colour_discrete(type = pal) +
   theme_bw() +
   guides(colour = "none") +
-  labs(x = "Recurring contact probability", y = "Assortativity (degree)")
+  labs(x = "Recurring contact probability", y = "Assortativity (degree)") +
+  theme(axis.title.x = element_blank(),
+        axis.text.x = element_blank())
 
 pf = ggplot(summary_data) +
   geom_boxplot(aes(x = network, y = assortativities_ward, colour = network)) +
@@ -206,7 +218,10 @@ pg = ggplot(summary_data%>%filter(temp_corr>0)) +
   guides(colour = "none") +
   labs(x = "Recurring contact probability", y = "Temporal correlation")
 
-plot_grid(pa,pb,pc,pd,pe,pf,pg, ncol=2, labels=c("a)", "b)", "c)", "d)", "e)","f)","g)"), hjust = 0)
+plot_grid(plot_grid(pa,pc,pe,pg, ncol=1, rel_heights = c(1,1,1,1.2),
+                    labels = c("a)", "c)", "e)", "g)"), hjust = 0, vjust=1, align = "v"),
+          plot_grid(pb,pd,pf,NULL, ncol=1, rel_heights = c(1,1,1.2,1), 
+                    labels = c("b)", "d)", "f)", ""), hjust = 0, vjust=1, align = "v"))
 
-ggsave(here::here("figures", "suppfig5.png"), width = 10, height = 7.1)
+ggsave(here::here("figures", "suppfig5.png"), width = 10, height = 8.5)
 
