@@ -5,9 +5,9 @@ $^{1}$ Epidemiology and Modelling of Antimicrobial Resistance, Institut Pasteur,
 $^{2}$ Conservatoire National des Arts et Métiers, France  
 $^{3}$ Université de Versailles Saint-Quentin-en-Yvelines/INSERM, France  
 
-*these authors contributed equally
-**these authors contributed equally
-+quentin.leclerc@pasteur.fr
+*these authors contributed equally  
+**these authors contributed equally  
++quentin.leclerc@pasteur.fr  
 
 <br/>
 
