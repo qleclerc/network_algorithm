@@ -1,123 +1,93 @@
 
 library(dplyr)
-library(ggplot2)
+library(lubridate)
+library(igraph)
+library(ggnetwork)
+library(ggtext)
 library(cowplot)
+library(RColorBrewer)
 
-summary_data = read.csv("summary_data.csv")
+source(here::here("Analysis", "helper_functions.r"))
 
-pvals = data.frame(network = unique(summary_data$network),
-                   degrees=0, densities=0, transitivities=0,
-                   assortativities=0, assortativities_ward=0, efficiencies=0, temp_corr=0)
+pal = brewer.pal(6, "Set2")
 
-for(net in unique(pvals$network)){
-  if(net=="Observed") next
-  pvals$degrees[pvals$network==net] = kruskal.test(degrees~iter,
-               data = summary_data %>% filter(network == net))$p.value
-  pvals$densities[pvals$network==net] = kruskal.test(densities~iter,
-                                                   data = summary_data %>% filter(network == net))$p.value
-  pvals$transitivities[pvals$network==net] = kruskal.test(transitivities~iter,
-                                                     data = summary_data %>% filter(network == net))$p.value
-  pvals$assortativities[pvals$network==net] = kruskal.test(assortativities~iter,
-                                                     data = summary_data %>% filter(network == net))$p.value
-  pvals$assortativities_ward[pvals$network==net] = kruskal.test(assortativities_ward~iter,
-                                                     data = summary_data %>% filter(network == net))$p.value
-  pvals$efficiencies[pvals$network==net] = kruskal.test(efficiencies~iter,
-                                                     data = summary_data %>% filter(network == net))$p.value
-  pvals$temp_corr[pvals$network==net] = kruskal.test(temp_corr~iter,
-                                                        data = summary_data %>% filter(network == net))$p.value
-  
-}
+adm_data = read.csv(here::here("Data", "Observed", "toy_admission.csv"), sep=";") %>%
+  select(id, hospitalization, cat, ward)
+adm_data$cat[adm_data$cat == ""] = adm_data$hospitalization[adm_data$cat == ""]
+adm_data = adm_data[,c(1,3,4)] %>%
+  distinct()
+eq_table = openxlsx::read.xlsx(here::here("Data", "Observed", "cat_groupings.xlsx")) %>%
+  select(cat, cat_ag)
+adm_data = adm_data %>%
+  left_join(eq_table, by = "cat") %>%
+  mutate(staff = grepl("PE-", id))
 
-pvals[,-1] = round(pvals[,-1],10)
-pvals
+data = read.csv2(here::here("Data", "Observed", "toy_mat_ctc.csv"))
 
-simu_data = summary_data %>%
-  filter(network == "Simulated")
+graph_data = data %>%
+  mutate(date_posix = as_datetime(date_posix)) %>%
+  mutate(date_posix = floor_date(date_posix, "day")) %>%
+  filter(date_posix >= as_date("2009-07-27") & date_posix < as_date("2009-08-24")) %>%
+  group_by(from, to, date_posix) %>%
+  summarise(length = sum(length)) %>%
+  ungroup %>%
+  arrange(date_posix)
 
-simu_data = simu_data %>%
-  mutate(day = wday(day, week_start=1),
-         weekend="") %>%
-  mutate(weekend = replace(weekend, ((day+1)%%7==0 | day%%7==0), "weekend")) %>%
-  mutate(weekend = replace(weekend, weekend =="", "weekday"))
+graph_data_PA_PA = graph_data %>%
+  filter(grepl("PA-", from) & grepl("PA-", to))
 
-pa = ggplot(simu_data) +
-  geom_point(aes(x = iter, colour = weekend, y = degrees), alpha = 0.3) +
-  geom_hline(aes(yintercept = median(degrees)), colour = "green3", linewidth = 1) +
+graph_data_PE_PE = graph_data %>%
+  filter(grepl("PE-", from) & grepl("PE-", to))
+
+graph_data_PA_PE = graph_data %>%
+  filter((grepl("PE-", from) & grepl("PA-", to)) | (grepl("PA-", from) & grepl("PE-", to)))
+
+all_metrics = get_net_metrics(graph_data, network = "Full")
+PA_PA_metrics = get_net_metrics(graph_data_PA_PA, network = "Patient-patient")
+PE_PE_metrics = get_net_metrics(graph_data_PE_PE, network = "Staff-staff")
+PA_PE_metrics = get_net_metrics(graph_data_PA_PE, network = "Patient-staff")
+
+cols = colnames(all_metrics)[1:7]
+summary_tab = rbind(all_metrics, PA_PA_metrics, PE_PE_metrics, PA_PE_metrics) %>%
+  mutate(temp_corr = replace(temp_corr, temp_corr==0, NA)) %>%
+  mutate(day = wday(day, week_start = 1)) %>%
+  mutate(day = as.character(day)) %>%
+  mutate(day = replace(day, day %in% c("6", "7"), "weekend")) %>%
+  mutate(day = replace(day, day != "weekend", "weekday")) %>%
+  group_by(network, day) %>%
+  summarise(across(all_of(cols), list(mean=mean, sd=sd), na.rm=T))
+
+summary_tab[,-c(1,2)] = round(summary_tab[,-c(1,2)], 2)
+
+View(summary_tab)
+
+rbind(all_metrics, PA_PA_metrics, PE_PE_metrics, PA_PE_metrics) %>%
+  mutate(temp_corr = replace(temp_corr, temp_corr==0, NA)) %>%
+  mutate(day_lab = wday(day, week_start = 1)) %>%
+  group_by(network, day_lab) %>%
+  summarise(mean = mean(temp_corr, na.rm=T), sd = sd(temp_corr, na.rm = T)) %>%
+  mutate(day_lab = as.character(day_lab)) %>%
+  mutate(day_lab = replace(day_lab, day_lab == "1", "Monday")) %>%
+  mutate(day_lab = replace(day_lab, day_lab == "2", "Tuesday")) %>%
+  mutate(day_lab = replace(day_lab, day_lab == "3", "Wednesday")) %>%
+  mutate(day_lab = replace(day_lab, day_lab == "4", "Thursday")) %>%
+  mutate(day_lab = replace(day_lab, day_lab == "5", "Friday")) %>%
+  mutate(day_lab = replace(day_lab, day_lab == "6", "Saturday")) %>%
+  mutate(day_lab = replace(day_lab, day_lab == "7", "Sunday")) %>%
+  mutate(day_lab = factor(day_lab,
+                          levels = c("Monday", "Tuesday", "Wednesday",
+                                     "Thursday", "Friday", "Saturday", "Sunday"))) %>%
+  ggplot() +
+  geom_pointrange(aes(x = day_lab, y = mean, ymin = mean-1.96*sd, ymax = mean+1.96*sd,
+                      colour = day_lab)) +
+  facet_grid(rows = vars(network), scales = "free_y") +
   theme_bw() +
-  labs(y = "Degrees") +
-  theme(axis.text.x = element_blank(),
-        axis.title.x = element_blank(),
-        axis.ticks.x = element_blank()) +
-  coord_cartesian(xlim = c(3,97)) +
-  guides(colour = "none")
-  
+  scale_colour_discrete(type = c(rep("blue3", 5), rep("red3", 2))) +
+  labs(x = "Day of the week", y = "Temporal correlation") +
+  guides(colour = "none") +
+  theme(axis.text = element_text(size = 12),
+        axis.title = element_text(size = 12),
+        strip.text = element_text(size = 12)) +
+  scale_y_continuous(breaks = seq(0,1,0.15))
 
-pb = ggplot(simu_data) +
-  geom_point(aes(x = iter, colour = weekend, y = efficiencies), alpha = 0.3) +
-  geom_hline(aes(yintercept = median(efficiencies)), colour = "green3", linewidth = 1) +
-  theme_bw() +
-  labs(y = "Global efficiency") +
-  theme(axis.text.x = element_blank(),
-        axis.title.x = element_blank(),
-        axis.ticks.x = element_blank()) +
-  coord_cartesian(xlim = c(3,97)) +
-  guides(colour = "none")
-
-pc = ggplot(simu_data) +
-  geom_point(aes(x = iter, colour = weekend, y = densities), alpha = 0.3) +
-  geom_hline(aes(yintercept = median(densities)), colour = "green3", linewidth = 1) +
-  theme_bw() +
-  labs(y = "Density") +
-  theme(axis.text.x = element_blank(),
-        axis.title.x = element_blank(),
-        axis.ticks.x = element_blank()) +
-  coord_cartesian(xlim = c(3,97)) +
-  guides(colour = "none")
-
-pd = ggplot(simu_data) +
-  geom_point(aes(x = iter, colour = weekend, y = transitivities), alpha = 0.3) +
-  geom_hline(aes(yintercept = median(transitivities)), colour = "green3", linewidth = 1) +
-  theme_bw() +
-  labs(y = "Transitivity") +
-  theme(axis.text.x = element_blank(),
-        axis.title.x = element_blank(),
-        axis.ticks.x = element_blank()) +
-  coord_cartesian(xlim = c(3,97)) +
-  guides(colour = "none")
-
-pe = ggplot(simu_data) +
-  geom_point(aes(x = iter, colour = weekend, y = assortativities), alpha = 0.3) +
-  geom_hline(aes(yintercept = median(assortativities)), colour = "green3", linewidth = 1) +
-  theme_bw() +
-  labs(y = "Assortativity (degree)") +
-  theme(axis.text.x = element_blank(),
-        axis.title.x = element_blank(),
-        axis.ticks.x = element_blank()) +
-  coord_cartesian(xlim = c(3,97)) +
-  guides(colour = "none")
-
-pf = ggplot(simu_data) +
-  geom_point(aes(x = iter, colour = weekend, y = assortativities_ward), alpha = 0.3) +
-  geom_hline(aes(yintercept = median(assortativities_ward)), colour = "green3", linewidth = 1) +
-  theme_bw() +
-  labs(y = "Assortativity (ward)", x = "Iteration") +
-  theme(axis.text.x = element_blank(),
-        axis.title.x = element_blank(),
-        axis.ticks.x = element_blank()) +
-  coord_cartesian(xlim = c(3,97)) +
-  guides(colour = "none")
-
-pg = ggplot(simu_data%>%filter(temp_corr>0)) +
-  geom_point(aes(x = iter, colour = weekend, y = temp_corr), alpha = 0.3) +
-  geom_hline(aes(yintercept = median(temp_corr)), colour = "green3", linewidth = 1) +
-  theme_bw() +
-  labs(y = "Temporal correlation", x = "Iteration") +
-  scale_x_continuous(breaks = seq(10,100,10)) +
-  coord_cartesian(xlim = c(3,97)) +
-  guides(colour = "none")
-
-plot_grid(pa,pb,pc,pd,pe,pf,pg, ncol = 1, align = "v",
-          rel_heights = c(1,1,1,1,1,1.3), labels = c("a)", "b)", "c)", "d)", "e)", "f)", "g)"),
-          hjust=0, vjust=1)
-
-ggsave(here::here("figures", "suppfig3.png"), height = 12, width = 10)
+ggsave(here::here("Figures", "suppfig3.png"))

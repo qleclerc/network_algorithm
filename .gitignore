@@ -49,6 +49,5 @@ po/*~
 # RStudio Connect folder
 rsconnect/
 
-# Networks raw data
-data/contact
-analysis/contact_algo.R
+# Extra fig
+xtrafig.R

@@ -7,22 +7,22 @@ library(ggtext)
 library(cowplot)
 library(RColorBrewer)
 
-source("helper_functions.r")
+source(here::here("Analysis", "helper_functions.r"))
 
 pal = brewer.pal(6, "Set2")
 
-adm_data = read.csv(here::here("data","toy_admission.csv"), sep=";") %>%
+adm_data = read.csv(here::here("Data", "Observed", "toy_admission.csv"), sep=";") %>%
   select(id, hospitalization, cat, ward)
 adm_data$cat[adm_data$cat == ""] = adm_data$hospitalization[adm_data$cat == ""]
 adm_data = adm_data[,c(1,3,4)] %>%
   distinct()
-eq_table = openxlsx::read.xlsx(here::here("data", "cat_groupings.xlsx")) %>%
+eq_table = openxlsx::read.xlsx(here::here("Data", "Observed", "cat_groupings.xlsx")) %>%
   select(cat, cat_ag)
 adm_data = adm_data %>%
   left_join(eq_table, by = "cat") %>%
   mutate(staff = grepl("PE-", id))
 
-data = read.csv2(here::here("data", "toy_mat_ctc.csv"))
+data = read.csv2(here::here("Data", "Observed", "toy_mat_ctc.csv"))
 
 graph_data = data %>%
   mutate(date_posix = as_datetime(date_posix)) %>%
@@ -215,4 +215,4 @@ plot_grid(pa,
           plot_grid(pb,pc,pd,nrow=1, labels = c("b)", "c)", "d)"), hjust = 0),
           pe, rel_heights = c(1,0.7,0.5), ncol = 1, labels = c("a)", "", "e)"), hjust = 0)
 
-ggsave(here::here("figures", "fig1.png"), height = 12, width = 10)
+ggsave(here::here("Figures", "fig1.png"), height = 12, width = 10)
