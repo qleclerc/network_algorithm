@@ -159,6 +159,8 @@ mean(probs_PE, na.rm = T)
 pc = ggplot() +
   geom_boxplot(aes(x = "Staff", probs_PE, group = "Staff", colour = "Staff")) +
   geom_boxplot(aes(x = "Patients", probs_PA, group = "Patients", colour = "Patients")) +
+  geom_point(aes(x = "Staff", y = mean(probs_PE, na.rm = T)), size = 5, pch = 18, col = "grey10") +
+  geom_point(aes(x = "Patients", y = mean(probs_PA, na.rm = T)), size = 5, pch = 18, col = "grey60") +
   theme_bw() +
   scale_y_continuous(breaks = seq(0,1,0.1)) +
   scale_x_discrete(limits = c("Staff", "Patients")) +
