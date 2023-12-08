@@ -354,28 +354,28 @@ pa = ggplot(distrib_all) +
                               "16:00","20:00")) +
   facet_grid(cols = vars(type), rows = vars(day)) +
   theme_bw() +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1),
-        legend.text = element_text(size = 12),
-        legend.title = element_text(size = 12),
-        axis.text.y = element_text(size = 12),
-        axis.title = element_text(size = 12),
-        strip.text = element_text(size = 12))  +
+  theme(axis.text.x = element_text(size = 12, angle = 45, hjust = 1),
+        legend.text = element_text(size = 14),
+        legend.title = element_text(size = 14),
+        axis.text.y = element_text(size = 14),
+        axis.title = element_text(size = 14),
+        strip.text = element_text(size = 14))  +
   labs(x = "Hour", y = "Number of unique contacts", colour = "Network:", fill = "Network:")
 
 pb = ggplot() +
   geom_boxplot(aes(y=dur_observed/60, x = "1", colour = "Observed"), outlier.shape = NA) +
-  geom_boxplot(aes(y=dur_simu_bias/60, x = "2", colour = "Simulated (bias)"), outlier.shape = NA) +
-  geom_boxplot(aes(y=dur_simu/60, x = "3", colour = "Simulated"), outlier.shape = NA) +
+  geom_boxplot(aes(y=dur_simu_bias/60, x = "2", colour = "Reconstructed (bias)"), outlier.shape = NA) +
+  geom_boxplot(aes(y=dur_simu/60, x = "3", colour = "Reconstructed"), outlier.shape = NA) +
   geom_boxplot(aes(y=dur_random/60, x = "4", colour = "Random"), outlier.shape = NA) +
-  scale_colour_manual(values = pal, breaks = c("Observed", "Simulated (bias)",
-                                               "Simulated", "Random")) +
-  scale_x_discrete(labels = c("Observed", "Simulated (bias)", "Simulated", "Random")) +
+  scale_colour_manual(values = pal, breaks = c("Observed", "Reconstructed (bias)",
+                                               "Reconstructed", "Random")) +
+  scale_x_discrete(labels = c("Observed", "Reconstructed (bias)", "Reconstructed", "Random")) +
   coord_cartesian(ylim = c(0,35)) +
   guides(colour="none") +
   theme_bw() +
-  theme(axis.text.x = element_text(size = 12),
-        axis.text.y = element_text(size = 12),
-        axis.title = element_text(size = 12)) +
+  theme(axis.text.x = element_text(size = 14),
+        axis.text.y = element_text(size = 14),
+        axis.title = element_text(size = 14)) +
   labs(y = "Contact duration (minutes)", x = "Network")
 
 plot_grid(pa, pb, nrow = 2, labels = c("a)", "b)"), rel_heights = c(1,0.8), hjust=0, vjust=c(1,0))

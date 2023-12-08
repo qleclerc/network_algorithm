@@ -130,13 +130,18 @@ summary_data %>%
 summary_data %>%
   group_by(staff) %>%
   mutate(prop = 1 - prop) %>%
-  summarise(mean = mean(prop), sd = sd(prop)) %>%
-  arrange(mean)
+  summarise(median = median(prop),
+            q1 = quantile(prop, 0.25),
+            q2 = quantile(prop, 0.75)) %>%
+  arrange(median)
+
+
+
 
 summary_data = summary_data %>%
   mutate(tr = factor(tr, levels = summary_data %>%
                        group_by(tr) %>%
-                       summarise(median = median(prop), sd = sd(prop)) %>%
+                       summarise(median = median(prop)) %>%
                        arrange(median) %>%
                        select(tr) %>% pull))
 

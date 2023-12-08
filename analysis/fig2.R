@@ -155,6 +155,10 @@ for(pp in unique(adm_data$id)){
 #note some values are NA because these are people with no contacts recorded over the period
 mean(probs_PA, na.rm = T)
 mean(probs_PE, na.rm = T)
+quantile(probs_PA, 0.25, na.rm = T)
+quantile(probs_PA, 0.75, na.rm = T)
+quantile(probs_PE, 0.25, na.rm = T)
+quantile(probs_PE, 0.75, na.rm = T)
 
 pc = ggplot() +
   geom_boxplot(aes(x = "Staff", probs_PE, group = "Staff", colour = "Staff")) +
