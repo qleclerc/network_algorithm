@@ -20,7 +20,7 @@ Each script in this folder is named according to the figure it generates. The `h
 This folder contains all the figures and supplementary figures of the paper.
 
 ## Data
-This folder contains the relevant observed and synthetic contact networks generated using our algorithm
+This folder contains the relevant observed and synthetic contact networks generated using our algorithm (note: although we generated 100 synthetic networks for each example we describe in the paper, here we only include 10 of each for data storage purposes).
 
 ### Observed
 This folder contains the observed contact network, the patient admission and discharge data, and the staff schedule data. It also contains an Excel file used to aggregate staff categories into groups.
