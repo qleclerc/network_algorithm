@@ -9,7 +9,7 @@ $^{3}$ Université de Versailles Saint-Quentin-en-Yvelines/INSERM, France
 ** these authors contributed equally  
 \+ quentin.leclerc@pasteur.fr  
 
-This repository contains the relevant contact networks and analysis code for the paper "An algorithm to build synthetic temporal contact networks based on close-proximity interactions data".
+This repository contains the relevant contact networks and analysis code for the paper ["An algorithm to build synthetic temporal contact networks based on close-proximity interactions data"](https://doi.org/10.1371/journal.pcbi.1012227).
 
 ***Please note that this project makes use of data previously collected as part of the i-Bird study. Full details are available in "Detailed Contact Data and the Dissemination of Staphylococcus aureus in Hospitals" (Obadia et al, PLOS Computational Biology 2015). For the version of this repository which contains the data, please refer to: https://gitlab.pasteur.fr/qleclerc/network_algorithm***
 
