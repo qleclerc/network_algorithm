@@ -11,6 +11,8 @@ $^{3}$ Université de Versailles Saint-Quentin-en-Yvelines/INSERM, France
 
 This repository contains the relevant contact networks and analysis code for the paper "An algorithm to build synthetic temporal contact networks based on close-proximity interactions data".
 
+***Please note that this project makes use of data previously collected as part of the i-Bird study. Full details are available in "Detailed Contact Data and the Dissemination of Staphylococcus aureus in Hospitals" (Obadia et al, PLOS Computational Biology 2015). For the version of this repository which contains the data, please refer to: https://gitlab.pasteur.fr/qleclerc/network_algorithm***
+
 <br/>
 
 ## Analysis
@@ -23,7 +25,7 @@ This folder contains all the figures and supplementary figures of the paper.
 This folder contains the relevant observed and synthetic contact networks generated using our algorithm (note: although we generated 100 synthetic networks for each example we describe in the paper, here we only include 10 of each for data storage purposes).
 
 ### Observed
-This folder contains the observed contact network, the patient admission and discharge data, and the staff schedule data. It also contains an Excel file used to aggregate staff categories into groups.
+This folder contains the observed contact network, the patient admission and discharge data, and the staff schedule data (please refer to https://gitlab.pasteur.fr/qleclerc/network_algorithm for those files). It also contains an Excel file used to aggregate staff categories into groups.
 
 ### Synthetic
 This folder contains contact networks generated using our algorithm. This includes full reconstructed networks (SimulatedCtc), reconstructed networks with observation bias (testRecord), full random networks (RandomGraph), random networks with observation bias (RandomGraph2), and re-simulated full networks (ReSimulatedCtc).
